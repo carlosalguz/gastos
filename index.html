@@ -113,7 +113,7 @@ button:disabled{opacity:.5}
 </div>
 <script>
 /* ===== Conexión con Apps Script (con modo de prueba fuera de Apps Script) ===== */
-/* Configuración guardada en este teléfono: URL de la API (Apps Script /exec) y PIN */
+/* Configuración guardada en este teléfono: URL de la API (Apps Script /exec) y contraseña */
 const CFG_KEY = 'gastos_cfg';
 function getCfg() { try { return JSON.parse(localStorage.getItem(CFG_KEY) || 'null'); } catch (e) { return null; } }
 function setCfg(c) { try { c ? localStorage.setItem(CFG_KEY, JSON.stringify(c)) : localStorage.removeItem(CFG_KEY); } catch (e) {} }
@@ -152,7 +152,7 @@ const C = n => getComputedStyle(document.documentElement).getPropertyValue(n).tr
 const MES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const MESC = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 let D = null;
-const S = { tab: 'cargar', period: '', showAll: false, detail: null, mvFilter: 'T', mvCat: '', budgetMes: '', saving: false,
+const S = { tab: 'resumen', period: '', showAll: false, detail: null, mvFilter: 'T', mvCat: '', budgetMes: '', saving: false,
   f: { tipo: 'G', monto: '', desc: '', cat: '', mes: '' } };
 const curMes = () => D.hoy.slice(0, 7);
 
@@ -336,7 +336,7 @@ function vCargar() {
 }
 
 /* ===== Render ===== */
-const ICONS = { cargar: '<path d="M12 5v14M5 12h14"/>', resumen: '<rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/>', movimientos: '<path d="M4 6h16M4 12h16M4 18h10"/>', presupuesto: '<circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 5"/>' };
+const ICONS = { resumen: '<rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/>', cargar: '<path d="M12 5v14M5 12h14"/>', movimientos: '<path d="M4 6h16M4 12h16M4 18h10"/>', presupuesto: '<circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 5"/>' };
 function render() {
   const main = document.getElementById('main');
   main.innerHTML = { cargar: vCargar, resumen: S.detail ? vDetalle : vResumen, movimientos: vMovs, presupuesto: vPresupuesto }[S.tab]();
@@ -404,7 +404,7 @@ async function cargar(silencioso) {
     render();
     if (silencioso) toast('✓ Datos actualizados');
   } catch (e) {
-    if (e === 'PIN incorrecto' || e === 'SIN_CONFIG') return vSetup(e === 'PIN incorrecto' ? 'El PIN guardado ya no es válido.' : '');
+    if (e === 'PIN incorrecto' || e === 'SIN_CONFIG') return vSetup(e === 'PIN incorrecto' ? 'La contraseña guardada ya no es válida.' : '');
     if (silencioso) return toast(String(e), true);
     document.getElementById('main').innerHTML = `<div class="empty" style="padding-top:38vh">No pude leer el Sheet:<br>${esc(e)}<br><br><button class="chip on" data-act="retry">Reintentar</button> <button class="chip" data-act="config">Configuración</button></div>`;
   }
@@ -418,18 +418,18 @@ function vSetup(msg) {
   document.getElementById('main').innerHTML = `<div class="setup">
     <img src="icon-192.png" width="64" height="64" style="border-radius:15px" alt="">
     <h1>Conectar Gastos</h1>
-    <p>Se guarda solo en este teléfono. Pega la URL de la implementación de Apps Script (termina en <b>/exec</b>) y tu PIN.</p>
+    <p>Se guarda solo en este teléfono. Pega la URL de la implementación de Apps Script (termina en <b>/exec</b>) y tu contraseña.</p>
     <label>URL de Apps Script</label><input id="s_url" type="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(c.url || '')}">
-    <label>PIN</label><input id="s_pin" type="password" inputmode="numeric" autocomplete="off" placeholder="••••••">
+    <label>Contraseña</label><input id="s_pin" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="••••••••">
     <button class="ok" id="s_ok">Conectar</button>
     <div class="err" id="s_err">${esc(msg || '')}</div>
     ${getCfg() ? '<button class="link" id="s_out" style="margin-top:8px">Borrar configuración de este teléfono</button>' : ''}
   </div>`;
   const ok = document.getElementById('s_ok'), err = document.getElementById('s_err');
   ok.onclick = async () => {
-    const url = document.getElementById('s_url').value.trim(), pin = document.getElementById('s_pin').value.trim();
+    const url = document.getElementById('s_url').value.trim(), pin = document.getElementById('s_pin').value;
     if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url)) { err.textContent = 'La URL debe ser la de Apps Script y terminar en /exec.'; return; }
-    if (!pin) { err.textContent = 'Escribe el PIN.'; return; }
+    if (!pin) { err.textContent = 'Escribe la contraseña.'; return; }
     ok.disabled = true; ok.textContent = 'Conectando…'; err.textContent = '';
     try { await callApi({ url, pin }, 'ping'); setCfg({ url, pin }); cargar(); }
     catch (e) { err.textContent = String(e); ok.disabled = false; ok.textContent = 'Conectar'; }
