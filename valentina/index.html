@@ -104,6 +104,17 @@ button:disabled{opacity:.5}
 .who{font-size:9.5px;font-weight:700;letter-spacing:.04em;padding:1px 5px;border-radius:4px;background:var(--tile2);color:var(--mute);margin-right:2px}
 .who-carlos{color:var(--acc)}.who-valentina{color:var(--gas)}
 .mv.ro{cursor:default}
+.lock{position:absolute;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 28px calc(24px + env(safe-area-inset-bottom));text-align:center}
+.lock h2{font-size:22px;font-weight:800;margin:16px 0 6px}
+.lock p{color:var(--mute);font-size:13.5px;margin-bottom:22px}
+.lock .ok{width:100%;height:50px;border-radius:99px;font-weight:700}
+.lock input{width:100%;background:var(--tile);border:1px solid var(--tile2);border-radius:12px;padding:13px 12px;outline:0;font-size:16px;margin-top:14px}
+.lock .err{color:var(--gas);font-size:13px;margin-top:12px;min-height:18px}
+.opt{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
+.opt .sub{line-height:1.4}
+.sw{flex:none;width:52px;height:32px;border-radius:99px;background:var(--tile2);position:relative;transition:background .2s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .2s}
+.sw.on{background:var(--ing)}.sw.on::after{transform:translateX(20px)}
 .phone::before{content:"";position:absolute;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--sbar);z-index:25}
 </style>
 </head>
@@ -482,6 +493,103 @@ async function cargar(silencioso) {
   }
 }
 
+/* ===== Face ID: bloqueo local con passkey (WebAuthn) =====
+   Opcional por teléfono (⚙ → Ajustes). Se pide al abrir la app y al volver tras 5 min en segundo plano.
+   Es un bloqueo de pantalla local: la API sigue protegida por la contraseña. Respaldo: la contraseña guardada. */
+const FID_KEY = 'gastos_faceid', BG_KEY = 'gastos_bg', FID_MIN = 5;
+function getFid() { try { return JSON.parse(localStorage.getItem(FID_KEY) || 'null'); } catch (e) { return null; } }
+function setFid(v) { try { v ? localStorage.setItem(FID_KEY, JSON.stringify(v)) : localStorage.removeItem(FID_KEY); } catch (e) {} }
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+const rnd = n => crypto.getRandomValues(new Uint8Array(n));
+async function fidDisponible() {
+  try { return !!(window.PublicKeyCredential && navigator.credentials && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch (e) { return false; }
+}
+async function fidVerificar(id) {
+  await navigator.credentials.get({ publicKey: { challenge: rnd(32), rpId: location.hostname, allowCredentials: [{ type: 'public-key', id: unb64u(id) }], userVerification: 'required', timeout: 60000 } });
+}
+async function fidActivar() {
+  const f = getFid();
+  if (f && f.id) { await fidVerificar(f.id); setFid({ id: f.id, on: true }); return; } // reutiliza la passkey ya creada
+  const yo = ALL ? ALL.yo : 'gastos';
+  const cred = await navigator.credentials.create({ publicKey: {
+    challenge: rnd(32), rp: { name: 'Gastos', id: location.hostname },
+    user: { id: rnd(16), name: 'gastos-' + yo, displayName: 'Gastos · ' + (ALL ? nombre(yo) : '') },
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
+    timeout: 60000, attestation: 'none' } });
+  setFid({ id: b64u(cred.rawId), on: true });
+}
+const fidActivo = () => { const f = getFid(); return !!(f && f.on && f.id && (getCfg() || DEMO)); };
+const fidMotivo = e => e && e.name === 'NotAllowedError' ? 'Se canceló o no se reconoció.' : e && e.name === 'InvalidStateError' ? 'Ya existe una llave para este teléfono.' : 'Face ID no está disponible en este momento.';
+function marcarSalida() { try { localStorage.setItem(BG_KEY, String(Date.now())); } catch (e) {} }
+
+let bloqueada = false, fallosLocal = 0, esperaHasta = 0;
+function bloquear() {
+  if (bloqueada || !fidActivo()) return;
+  bloqueada = true;
+  const el = document.createElement('div'); el.className = 'lock'; el.id = 'lock';
+  el.innerHTML = `<img src="icon-192.png" width="72" height="72" style="border-radius:17px" alt="">
+    <h2>Gastos bloqueado</h2><p>Usa Face ID para entrar.</p>
+    <button class="ok" id="l_fid">Desbloquear con Face ID</button>
+    <button class="link" id="l_pw" style="margin-top:14px">Usar contraseña</button>
+    <div id="l_box" style="width:100%" hidden><input id="l_pin" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Contraseña"><button class="ok" id="l_ok" style="margin-top:12px">Entrar</button></div>
+    <div class="err" id="l_err"></div>`;
+  document.getElementById('phone').appendChild(el);
+  const err = el.querySelector('#l_err'), box = el.querySelector('#l_box'), pin = el.querySelector('#l_pin');
+  const intentar = async () => {
+    err.textContent = '';
+    try { await fidVerificar(getFid().id); desbloquear(); }
+    catch (e) { err.textContent = fidMotivo(e) + ' Toca el botón o usa tu contraseña.'; }
+  };
+  const conPin = () => {
+    if (Date.now() < esperaHasta) { err.textContent = 'Demasiados intentos. Espera unos segundos.'; return; }
+    const real = DEMO ? 'demo' : (getCfg() || {}).pin;
+    if (pin.value && pin.value === real) { fallosLocal = 0; return desbloquear(); }
+    pin.value = ''; fallosLocal++;
+    if (fallosLocal >= 5) { esperaHasta = Date.now() + 30000; fallosLocal = 0; err.textContent = 'Demasiados intentos. Espera 30 segundos.'; }
+    else err.textContent = 'Contraseña incorrecta';
+  };
+  el.querySelector('#l_fid').onclick = intentar;
+  el.querySelector('#l_pw').onclick = () => { box.hidden = false; pin.focus(); };
+  el.querySelector('#l_ok').onclick = conPin;
+  pin.onkeydown = e => { if (e.key === 'Enter') conPin(); };
+  setTimeout(intentar, 350); // intento automático; si iOS exige un toque, queda el botón
+}
+function desbloquear() { bloqueada = false; const el = document.getElementById('lock'); if (el) el.remove(); marcarSalida(); }
+function revisarBloqueo() {
+  if (bloqueada || !fidActivo()) return;
+  let t = 0; try { t = Number(localStorage.getItem(BG_KEY)) || 0; } catch (e) {}
+  if (Date.now() - t > FID_MIN * 60000) bloquear();
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { if (!bloqueada) marcarSalida(); } else revisarBloqueo(); });
+window.addEventListener('pageshow', e => { if (e.persisted) revisarBloqueo(); });
+
+async function ajustes() {
+  const disp = await fidDisponible(), on = fidActivo();
+  const ov = document.createElement('div'); ov.className = 'ov'; ov.id = 'ajustes';
+  ov.innerHTML = `<div class="sheet"><div class="row"><b style="font-size:16px">Ajustes</b><span class="sub">${ALL ? 'Perfil: ' + esc(nombre(ALL.yo)) : ''}</span></div>
+    <div class="opt"><div><div style="font-size:14px;font-weight:600">Bloqueo con Face ID</div>
+      <div class="sub">${disp ? 'Se pide al abrir la app y al volver después de ' + FID_MIN + ' minutos. Si falla, entras con tu contraseña.' : 'Este teléfono no permite Face ID en esta app.'}</div></div>
+      ${disp || on ? `<button class="sw ${on ? 'on' : ''}" id="a_fid" aria-label="Bloqueo con Face ID"></button>` : ''}</div>
+    <div class="opt" style="border-bottom:0"><div><div style="font-size:14px;font-weight:600">Conexión</div><div class="sub">URL de Apps Script y contraseña de este teléfono</div></div><button class="chip" id="a_cfg">Cambiar</button></div>
+    <div class="btns"><button class="ok" id="a_ok">Listo</button></div></div>`;
+  document.getElementById('phone').appendChild(ov);
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  ov.querySelector('#a_ok').onclick = () => ov.remove();
+  ov.querySelector('#a_cfg').onclick = () => { ov.remove(); vSetup(); };
+  const sw = ov.querySelector('#a_fid');
+  if (sw) sw.onclick = async () => {
+    sw.disabled = true;
+    if (fidActivo()) { const f = getFid(); setFid({ id: f.id, on: false }); sw.classList.remove('on'); toast('Face ID desactivado'); }
+    else {
+      try { await fidActivar(); sw.classList.add('on'); toast('✓ Face ID activado'); }
+      catch (e) { toast('No se activó: ' + fidMotivo(e), true); }
+    }
+    sw.disabled = false;
+  };
+}
+
 function vSetup(msg) {
   const c = getCfg() || {};
   D = null; ALL = null; S.vista = '';
@@ -507,7 +615,7 @@ function vSetup(msg) {
     catch (e) { err.textContent = String(e); ok.disabled = false; ok.textContent = 'Conectar'; }
   };
   const out = document.getElementById('s_out');
-  if (out) out.onclick = () => { setCfg(null); vSetup(); };
+  if (out) out.onclick = () => { setCfg(null); setFid(null); vSetup(); };
 }
 
 document.addEventListener('click', e => {
@@ -515,7 +623,7 @@ document.addEventListener('click', e => {
   if (!t) return;
   const ds = t.dataset;
   if (ds.act === 'retry') return cargar();
-  if (ds.act === 'config') return vSetup();
+  if (ds.act === 'config') return D ? ajustes() : vSetup();
   if (!D) return;
   if (ds.vista) { setVista(ds.vista); }
   else if (ds.tab) { S.tab = ds.tab; S.detail = null; }
@@ -538,6 +646,7 @@ document.addEventListener('click', e => {
   render(); main.scrollTop = keep ? sc : 0;
 });
 try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (D) render(); }); } catch (e) {}
+if (fidActivo()) bloquear();
 cargar();
 </script>
 </body>
