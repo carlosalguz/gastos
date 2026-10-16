@@ -99,6 +99,11 @@ button:disabled{opacity:.5}
 .setup input{width:100%;background:var(--tile);border:1px solid var(--tile2);border-radius:12px;padding:13px 12px;outline:0;font-size:16px}
 .setup .ok{width:100%;height:50px;border-radius:99px;font-weight:700;margin-top:22px}
 .setup .err{color:var(--gas);font-size:13px;margin-top:12px;min-height:18px}
+.vsel button{font-size:12px}
+.yo{font-weight:500;opacity:.6;font-size:11px}
+.who{font-size:9.5px;font-weight:700;letter-spacing:.04em;padding:1px 5px;border-radius:4px;background:var(--tile2);color:var(--mute);margin-right:2px}
+.who-carlos{color:var(--acc)}.who-valentina{color:var(--gas)}
+.mv.ro{cursor:default}
 .phone::before{content:"";position:absolute;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--sbar);z-index:25}
 </style>
 </head>
@@ -117,7 +122,8 @@ button:disabled{opacity:.5}
 const CFG_KEY = 'gastos_cfg';
 function getCfg() { try { return JSON.parse(localStorage.getItem(CFG_KEY) || 'null'); } catch (e) { return null; } }
 function setCfg(c) { try { c ? localStorage.setItem(CFG_KEY, JSON.stringify(c)) : localStorage.removeItem(CFG_KEY); } catch (e) {} }
-const DEMO = new URLSearchParams(location.search).has('demo');
+const QS = new URLSearchParams(location.search);
+const DEMO = QS.has('demo');
 async function api(fn, ...args) {
   if (DEMO) { await new Promise(r => setTimeout(r, 200)); return MOCK[fn](...args); }
   const c = getCfg();
@@ -126,8 +132,10 @@ async function api(fn, ...args) {
 }
 async function callApi(c, fn, args) {
   let r;
+  const body = { pin: c.pin, action: fn, args: args || [] };
+  if (ALL && ALL.yo) body.perfil = ALL.yo; // la API rechaza escrituras en un perfil ajeno
   try {
-    r = await fetch(c.url, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ pin: c.pin, action: fn, args: args || [] }) });
+    r = await fetch(c.url, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
   } catch (e) { throw 'Sin conexión con el Sheet. Revisa tu internet.'; }
   let j;
   try { j = await r.json(); } catch (e) { throw 'Respuesta inesperada. Revisa la URL y que la implementación tenga acceso "Cualquier persona".'; }
@@ -135,15 +143,25 @@ async function callApi(c, fn, args) {
   return j.data;
 }
 const MOCK = (() => {
-  // Solo para pruebas: abrir con ?demo
-  const raw = [['2026-09','G','2026-09-15',366804,'Udara','Administración'],['2026-09','G','2026-09-15',71128,'Acuerdo','TC Nu'],['2026-09','G','2026-09-17',700000,'','Otros'],['2026-09','G','2026-09-19',138300,'Crepes','Otros'],['2026-09','G','2026-09-21',41900,'Youtube','Youtube'],['2026-09','G','2026-09-25',646230,'Varios','Otros'],['2026-09','I','2026-09-15',2990000,'Sueldo 15','Sueldo'],['2026-09','I','2026-09-30',2990000,'Sueldo fin de mes','Sueldo'],['2026-10','G','2026-09-30',2630346,'Udara','Arriendo'],['2026-10','G','2026-09-30',20700,'Virgin','Otros'],['2026-10','G','2026-09-30',133800,'DTV','DTV'],['2026-10','G','2026-10-01',100000,'Regalo amigo secreto','Otros'],['2026-10','G','2026-10-01',14989,'Uber','Otros']];
-  let movs = raw.map((r, i) => ({ id: i + 1, mes: r[0], tipo: r[1], fecha: r[2], valor: r[3], desc: r[4], cat: r[5] }));
+  // Solo para pruebas: ?demo (perfil Carlos) o ?demo=valentina
+  const yo = QS.get('demo') === 'valentina' ? 'valentina' : 'carlos';
+  const mk = raw => raw.map((r, i) => ({ id: i + 1, mes: r[0], tipo: r[1], fecha: r[2], valor: r[3], desc: r[4], cat: r[5] }));
+  const P = {
+    carlos: { nombre: 'Carlos', movs: mk([['2026-09','G','2026-09-15',366804,'Udara','Administración'],['2026-09','G','2026-09-15',71128,'Acuerdo','TC Nu'],['2026-09','G','2026-09-17',700000,'','Otros'],['2026-09','G','2026-09-19',138300,'Crepes','Otros'],['2026-09','G','2026-09-21',41900,'Youtube','Youtube'],['2026-09','G','2026-09-25',646230,'Varios','Otros'],['2026-09','I','2026-09-15',2990000,'Sueldo 15','Sueldo'],['2026-09','I','2026-09-30',2990000,'Sueldo fin de mes','Sueldo'],['2026-10','G','2026-09-30',2630346,'Udara','Arriendo'],['2026-10','G','2026-09-30',20700,'Virgin','Otros'],['2026-10','G','2026-09-30',133800,'DTV','DTV'],['2026-10','G','2026-10-01',100000,'Regalo amigo secreto','Otros'],['2026-10','G','2026-10-01',14989,'Uber','Otros']]),
+      catsG: ['Arriendo','Administración','Luz','Agua','Claude','Apple one','Movistar','Capcut','TC Fal','TC Nu','Netflix','Youtube','Fondo','Mercado','Complementaria','Somos','DTV','Lavandería','Gasolina','Otros'], catsI: ['Sueldo','Freelance','Otros ingresos'], saldo0: { valor: 5631, mes: '2026-09' },
+      prev: {'Arriendo':2630346,'Administración':366804,'Luz':100000,'Agua':100000,'Claude':70000,'Apple one':87000,'Movistar':110000,'Capcut':60000,'TC Fal':825503,'TC Nu':85000,'Netflix':30000,'Youtube':48000,'Fondo':240000,'Mercado':1000000,'Complementaria':350000,'Somos':150000,'DTV':140000,'Lavandería':200000,'Gasolina':400000} },
+    valentina: { nombre: 'Valentina', movs: mk([['2026-10','G','2026-10-05',1700000,'Cuota','Cr. Hip 1604'],['2026-10','G','2026-10-08',304815,'','Prepagada'],['2026-10','G','2026-10-10',86000,'Gasolina','Moto'],['2026-10','G','2026-10-12',45000,'Almuerzo','Otros']]),
+      catsG: ['Cr. Hip 1604','Crédito 40M','Libre inversión','Libre inversión mamá','Tarjeta de crédito','Prepagada','Moto','Otros'], catsI: ['Sueldo','Otros ingresos'], saldo0: { valor: 242014, mes: '2026-10' }, ingresoRef: 7832733,
+      prev: {'Cr. Hip 1604':1700000,'Libre inversión':700000,'Libre inversión mamá':200000,'Tarjeta de crédito':1500000,'Prepagada':304815} }
+  };
+  const own = () => P[yo];
+  const cp = o => JSON.parse(JSON.stringify(o));
   return {
-    getDatos: () => ({ movs: JSON.parse(JSON.stringify(movs)), catsG: ['Arriendo','Administración','Luz','Agua','Claude','Apple one','Movistar','Capcut','TC Fal','TC Nu','Netflix','Youtube','Fondo','Mercado','Complementaria','Somos','DTV','Lavandería','Gasolina','Otros'], catsI: ['Sueldo','Freelance','Otros ingresos'], saldo0: { valor: 5631, mes: '2026-09' }, prev: {'Arriendo':2630346,'Administración':366804,'Luz':100000,'Agua':100000,'Claude':70000,'Apple one':87000,'Movistar':110000,'Capcut':60000,'TC Fal':825503,'TC Nu':85000,'Netflix':30000,'Youtube':48000,'Fondo':240000,'Mercado':1000000,'Complementaria':350000,'Somos':150000,'DTV':140000,'Lavandería':200000,'Gasolina':400000}, hoy: '2026-10-01' }),
-    ping: () => true,
-    guardarMovimiento: m => { const n = { ...m, id: Math.max(...movs.map(x => x.id)) + 1, fecha: '2026-10-01', valor: Math.round(m.valor) }; movs.push(n); return n; },
-    editarMovimiento: (id, c) => { const x = movs.find(y => y.id === id); Object.assign(x, c); return { ...x }; },
-    borrarMovimiento: id => { movs = movs.filter(y => y.id !== id); return true; }
+    getDatos: () => Object.assign(cp(own()), { yo, perfiles: cp(P), hoy: '2026-10-15' }),
+    ping: () => ({ yo, nombre: own().nombre }),
+    guardarMovimiento: m => { const n = { ...m, id: Math.max(0, ...own().movs.map(x => x.id)) + 1, fecha: '2026-10-15', valor: Math.round(m.valor) }; own().movs.push(n); return cp(n); },
+    editarMovimiento: (id, c) => { const x = own().movs.find(y => y.id === id); Object.assign(x, c); return cp(x); },
+    borrarMovimiento: id => { own().movs = own().movs.filter(y => y.id !== id); return true; }
   };
 })();
 
@@ -151,8 +169,10 @@ const MOCK = (() => {
 const C = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const MES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const MESC = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-let D = null;
-const S = { tab: 'resumen', period: '', showAll: false, detail: null, mvFilter: 'T', mvCat: '', budgetMes: '', saving: false,
+let ALL = null;   // respuesta completa de getDatos: { yo, perfiles:{carlos,valentina}, hoy, ... }
+let D = null;     // datos de la vista activa (Hogar, Carlos o Valentina)
+const PERF = ['carlos', 'valentina'];
+const S = { tab: 'resumen', vista: '', period: '', showAll: false, detail: null, mvFilter: 'T', mvCat: '', budgetMes: '', saving: false,
   f: { tipo: 'G', monto: '', desc: '', cat: '', mes: '' } };
 const curMes = () => D.hoy.slice(0, 7);
 
@@ -181,10 +201,39 @@ function catAvg(cat, exclude) {
   if (ms.length < 2) return null;
   return ms.reduce((a, k) => a + data().filter(x => x.mes === k && x.tipo === 'G' && x.cat === cat).reduce((s, x) => s + x.valor, 0), 0) / ms.length;
 }
-function saldoFinal(k) {
-  if (!D.saldo0.mes || k < D.saldo0.mes) return null;
-  return D.saldo0.valor + data().filter(x => x.mes >= D.saldo0.mes && x.mes <= k).reduce((a, x) => a + (x.tipo === 'I' ? x.valor : -x.valor), 0);
+/* Saldo de una persona al cierre del mes k (null si k es anterior a su saldo inicial) */
+function saldoPerfil(p, k) {
+  if (!p || !p.saldo0 || !p.saldo0.mes || k < p.saldo0.mes) return null;
+  return p.saldo0.valor + p.movs.filter(x => x.mes >= p.saldo0.mes && x.mes <= k).reduce((a, x) => a + (x.tipo === 'I' ? x.valor : -x.valor), 0);
 }
+/* En Hogar suma lo que exista de cada persona a ese mes */
+function saldoFinal(k) {
+  const vals = D.quienes.map(w => saldoPerfil(ALL.perfiles[w], k)).filter(v => v !== null);
+  return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+}
+
+/* ===== Perfiles y vistas ===== */
+const disponibles = () => PERF.filter(k => ALL.perfiles[k]);
+const nombre = k => k === 'hogar' ? 'Hogar' : (ALL.perfiles[k] && ALL.perfiles[k].nombre) || (k[0].toUpperCase() + k.slice(1));
+const propio = () => ALL.perfiles[ALL.yo];
+function vistaData(v) {
+  const ks = v === 'hogar' ? disponibles() : [v];
+  const uniq = a => [...new Set(a)], prev = {};
+  ks.forEach(k => Object.entries(ALL.perfiles[k].prev || {}).forEach(([c, x]) => prev[c] = (prev[c] || 0) + x));
+  return {
+    vista: v, quienes: ks, ro: v !== ALL.yo, hoy: ALL.hoy, prev,
+    movs: ks.flatMap(k => ALL.perfiles[k].movs.map(m => ({ ...m, who: k }))),
+    catsG: uniq(ks.flatMap(k => ALL.perfiles[k].catsG)),
+    catsI: uniq(ks.flatMap(k => ALL.perfiles[k].catsI))
+  };
+}
+function setVista(v) { S.vista = v; D = vistaData(v); S.mvCat = ''; S.detail = null; S.showAll = false; if (S.period !== 'all' && !months().includes(S.period)) S.period = curMes(); }
+function vistaSel() {
+  const ks = disponibles();
+  if (ks.length < 2) return '';
+  return `<div class="seg vsel" style="margin-bottom:12px">${['hogar', ...ks].map(k => `<button class="${S.vista === k ? 'on' : ''}" data-vista="${k}">${nombre(k)}${k === ALL.yo ? ' <span class="yo">·tú</span>' : ''}</button>`).join('')}</div>`;
+}
+const roTag = () => D.ro ? '<span class="tag" style="margin-left:6px;vertical-align:middle">Solo lectura</span>' : '';
 
 /* ===== Gráficos ===== */
 function ring(pct) {
@@ -222,13 +271,26 @@ function periodChips(withAll) {
   return `<div class="chips">${withAll ? `<button class="chip ${S.period === 'all' ? 'on' : ''}" data-period="all">Histórico</button>` : ''}${months().slice().reverse().map(k => `<button class="chip ${S.period === k ? 'on' : ''}" data-period="${k}">${mName(k, true)}</button>`).join('')}</div>`;
 }
 
+/* Hogar: comparación entre las dos personas para el periodo elegido */
+function porPersona(cur, gasTot, k) {
+  if (D.vista !== 'hogar' || D.quienes.length < 2) return '';
+  return `<div class="t s2"><div class="row" style="margin-bottom:4px"><span class="lbl">Por persona</span><span style="font-size:10px;color:var(--dim)">disponible · ing · gas</span></div>
+  ${D.quienes.map(w => { const a = cur.filter(x => x.who === w), i = sum(a, 'I'), g = sum(a, 'G'), sp = saldoPerfil(ALL.perfiles[w], k), pc = gasTot ? g / gasTot * 100 : 0;
+    return `<div class="rk" data-vista="${w}"><span class="n">${esc(nombre(w))}${w === ALL.yo ? ' <span class="yo">·tú</span>' : ''}</span><span class="p">${sp === null ? '—' : fmt(sp)}</span><span class="bar"><i style="width:${pc}%"></i></span><span class="m"><span style="color:var(--ing)">+${fs(i)}</span> · <span style="color:var(--gas)">−${fs(g)}</span></span><span class="a" style="color:var(--dim)">${pc.toFixed(0)}% del gasto</span></div>`; }).join('')}
+  </div>`;
+}
+
 function vResumen() {
   const p = S.period, d = data(), cur = d.filter(x => inP(x, p)), cm = curMes();
   const ing = sum(cur, 'I'), gas = sum(cur, 'G'), bal = ing - gas, ah = ing ? bal / ing * 100 : 0;
+  // En Hogar no se compara con un mes en el que alguno aún no registraba
+  const nuevo = p === 'all' ? [] : D.quienes.filter(w => { const m = ALL.perfiles[w].saldo0 && ALL.perfiles[w].saldo0.mes; return D.quienes.length > 1 && m && m > prevKey(p) && m <= p; });
+  const sinCmp = nuevo.length ? `<div class="sub">${esc(nuevo.map(nombre).join(' y '))} empezó en ${mShort(p).toLowerCase()}</div>` : '';
   let cmp = '';
-  if (p !== 'all') { const pv = d.filter(x => x.mes === prevKey(p)); if (pv.length) { const dl = bal - (sum(pv, 'I') - sum(pv, 'G')); cmp = `${dl >= 0 ? '+' : '−'}${fs(Math.abs(dl))} vs ${mShort(prevKey(p)).toLowerCase()}`; } }
+  if (p !== 'all' && !nuevo.length) { const pv = d.filter(x => x.mes === prevKey(p)); if (pv.length) { const dl = bal - (sum(pv, 'I') - sum(pv, 'G')); cmp = `${dl >= 0 ? '+' : '−'}${fs(Math.abs(dl))} vs ${mShort(prevKey(p)).toLowerCase()}`; } }
   const delta = t => {
     if (p === 'all') return '';
+    if (sinCmp && !(t === 'I' && p === cm && !sum(cur, t))) return sinCmp;
     const pv = d.filter(x => x.mes === prevKey(p)); const a = sum(cur, t), b = sum(pv, t);
     if (!a && t === 'I' && p === cm) return '<div class="sub">Aún sin registrar</div>';
     if (!pv.length) return '<div class="sub">Sin mes anterior</div>';
@@ -243,15 +305,17 @@ function vResumen() {
   else { const [y, m] = p.split('-').map(Number); days = p === cm ? +D.hoy.slice(8) : new Date(y, m, 0).getDate(); }
   const tp = totalPrev(), ejec = tp ? gas / tp * 100 : 0, colE = ejec > 100 ? 'var(--gas)' : ejec > 80 ? 'var(--warn)' : 'var(--ing)';
   const isNow = p === 'all' || p === cm, k = p === 'all' ? cm : p, sf = saldoFinal(isNow ? months().slice(-1)[0] : k), pend = p === cm && ing === 0;
+  const kk = isNow ? months().slice(-1)[0] : k;
+  const heroSub = sf === null ? 'Antes del saldo inicial registrado' : !isNow ? 'Pasa como saldo inicial a ' + mShort(nextKey(k)).toLowerCase() : D.vista === 'hogar' ? 'Suma de las cuentas de ' + D.quienes.map(nombre).join(' y ') : D.ro ? 'Cuenta de ' + nombre(D.vista) : 'Debe coincidir con tu cuenta bancaria';
   return `
-  <div class="row" style="margin-bottom:12px"><div><div class="lbl">Resumen</div><div style="font-size:20px;font-weight:700;margin-top:2px">${p === 'all' ? 'Histórico' : mName(p)}</div></div>
+  <div class="row" style="margin-bottom:12px"><div><div class="lbl">Resumen · ${nombre(D.vista)}${roTag()}</div><div style="font-size:20px;font-weight:700;margin-top:2px">${p === 'all' ? 'Histórico' : mName(p)}</div></div>
   <button class="iconbtn" data-act="refresh" title="Actualizar">↻</button></div>
-  ${periodChips(true)}
+  ${vistaSel()}${periodChips(true)}
   <div class="grid" style="margin-top:12px">
     <div class="t s2" style="background:linear-gradient(135deg,var(--heroA),var(--heroB));color:#fff">
       <div class="lbl" style="color:var(--heroInk)">${isNow ? 'Disponible hoy' : 'Saldo final de ' + mShort(k).toLowerCase()}</div>
       <div class="big">${sf === null ? '—' : fmt(sf)}</div>
-      <div class="sub" style="color:var(--heroInk);margin-bottom:12px">${sf === null ? 'Antes del saldo inicial registrado' : isNow ? 'Debe coincidir con tu cuenta bancaria' : 'Pasa como saldo inicial a ' + mShort(nextKey(k)).toLowerCase()}</div>
+      <div class="sub" style="color:var(--heroInk);margin-bottom:12px">${heroSub}</div>
       <div class="row" style="border-top:1px solid rgba(165,243,252,.2);padding-top:10px">
         <div><div class="lbl" style="color:var(--heroInk)">${p === 'all' ? 'Resultado acumulado' : 'Resultado del mes'}</div>
         <div class="mid" style="color:${bal >= 0 ? 'var(--heroPos)' : 'var(--heroNeg)'}">${bal >= 0 ? '+' : ''}${fs(bal)}</div>
@@ -259,6 +323,7 @@ function vResumen() {
         ${pend ? '' : ring(ah)}</div></div>
     <div class="t"><div class="lbl">Ingresos</div><div class="mid" style="color:var(--ing)">${fs(ing)}</div>${delta('I')}</div>
     <div class="t"><div class="lbl">Gastos</div><div class="mid" style="color:var(--gas)">${fs(gas)}</div>${delta('G')}</div>
+    ${porPersona(cur, gas, kk)}
     <div class="t s2"><div class="row"><span class="lbl">Ingresos vs gastos</span><span style="font-size:10px;color:var(--dim)"><span style="color:var(--ing)">●</span> Ing <span style="color:var(--gas)">●</span> Gas</span></div><div style="margin-top:8px">${barsMonths(p)}</div><div class="sub" style="text-align:center;margin-top:2px">Toca un mes para verlo</div></div>
     <div class="t s2"><div class="row" style="margin-bottom:4px"><span class="lbl">¿En qué se va la plata?</span><span class="tag">${rk.length} categorías</span></div>
       ${rk.length ? shown.map(r => { const avg = catAvg(r.cat, p); let a = '';
@@ -273,7 +338,8 @@ function vResumen() {
 }
 
 function mvRow(x) {
-  return `<div class="mv" data-edit="${x.id}"><div style="min-width:0"><div class="d">${esc(x.desc || x.cat)}</div><div class="c">${esc(x.cat)} · ${fdate(x.fecha)}${x.mes !== x.fecha.slice(0, 7) ? ` · <span style="color:var(--warn)">cuenta en ${mShort(x.mes)}</span>` : ''}</div></div><div class="v" style="color:${x.tipo === 'I' ? 'var(--ing)' : 'var(--ink)'}">${x.tipo === 'I' ? '+' : '−'}${fmt(x.valor)}</div></div>`;
+  const who = D.vista === 'hogar' ? `<span class="who who-${x.who}">${esc(nombre(x.who))}</span> ` : '';
+  return `<div class="mv${D.ro ? ' ro' : ''}" ${D.ro ? '' : `data-edit="${x.id}"`}><div style="min-width:0"><div class="d">${esc(x.desc || x.cat)}</div><div class="c">${who}${esc(x.cat)} · ${fdate(x.fecha)}${x.mes !== x.fecha.slice(0, 7) ? ` · <span style="color:var(--warn)">cuenta en ${mShort(x.mes)}</span>` : ''}</div></div><div class="v" style="color:${x.tipo === 'I' ? 'var(--ing)' : 'var(--ink)'}">${x.tipo === 'I' ? '+' : '−'}${fmt(x.valor)}</div></div>`;
 }
 
 function vDetalle() {
@@ -296,15 +362,15 @@ function vDetalle() {
 
 function vMovs() {
   const p = S.period;
-  const d = data().filter(x => inP(x, p)).filter(x => S.mvFilter === 'T' || x.tipo === S.mvFilter).filter(x => !S.mvCat || x.cat === S.mvCat).sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id - a.id);
+  const d = data().filter(x => inP(x, p)).filter(x => S.mvFilter === 'T' || x.tipo === S.mvFilter).filter(x => !S.mvCat || x.cat === S.mvCat).sort((a, b) => b.fecha.localeCompare(a.fecha) || (a.who === b.who ? b.id - a.id : a.who.localeCompare(b.who)));
   const cats = [...new Set(data().filter(x => inP(x, p)).map(x => x.cat))].sort();
-  let html = `<div class="row"><div><div class="lbl">Movimientos</div><div style="font-size:20px;font-weight:700;margin:2px 0 12px">${p === 'all' ? 'Histórico' : mName(p)}</div></div><button class="iconbtn" data-act="refresh" title="Actualizar">↻</button></div>${periodChips(true)}
+  let html = `<div class="row"><div><div class="lbl">Movimientos · ${nombre(D.vista)}${roTag()}</div><div style="font-size:20px;font-weight:700;margin:2px 0 12px">${p === 'all' ? 'Histórico' : mName(p)}</div></div><button class="iconbtn" data-act="refresh" title="Actualizar">↻</button></div>${vistaSel()}${periodChips(true)}
   <div class="seg" style="margin:12px 0 8px">${[['T', 'Todos'], ['G', 'Gastos'], ['I', 'Ingresos']].map(([k, l]) => `<button class="${S.mvFilter === k ? 'on' : ''}" data-mvf="${k}">${l}</button>`).join('')}</div>
   <div class="chips"><button class="chip ${!S.mvCat ? 'on' : ''}" data-mvc="">Todas</button>${cats.map(c => `<button class="chip ${S.mvCat === c ? 'on' : ''}" data-mvc="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
   let last = '';
   d.forEach(x => { if (x.fecha !== last) { last = x.fecha; const day = d.filter(y => y.fecha === x.fecha && y.tipo === 'G').reduce((a, b) => a + b.valor, 0); html += `<div class="dayh row"><span>${fdate(x.fecha)}</span><span>${day ? '−' + fmt(day) : ''}</span></div>`; } html += mvRow(x); });
   if (!d.length) html += '<div class="empty">No hay movimientos con este filtro</div>';
-  return html + `<div class="sub" style="text-align:center;margin-top:14px">Toca un movimiento para editarlo o borrarlo</div>`;
+  return html + `<div class="sub" style="text-align:center;margin-top:14px">${D.ro ? 'Solo lectura. Para registrar o editar, cambia a tu perfil (' + esc(nombre(ALL.yo)) + ').' : 'Toca un movimiento para editarlo o borrarlo'}</div>`;
 }
 
 function vPresupuesto() {
@@ -315,16 +381,17 @@ function vPresupuesto() {
   const tp = totalPrev(), tr = cur.reduce((a, b) => a + b.valor, 0), pt = tp ? tr / tp * 100 : 0;
   const rows = cats.map(c => ({ c, p: D.prev[c] || 0, r: real[c] || 0 })).sort((a, b) => (b.p ? b.r / b.p : 9) - (a.p ? a.r / a.p : 9));
   const col = x => x > 100 ? 'var(--gas)' : x > 80 ? 'var(--warn)' : 'var(--ing)';
-  return `<div class="lbl">Presupuesto</div><div style="font-size:20px;font-weight:700;margin:2px 0 12px">${mName(k)}</div>
-  <div class="chips">${ms.map(m => `<button class="chip ${k === m ? 'on' : ''}" data-bmes="${m}">${mName(m, true)}</button>`).join('')}</div>
+  const hojas = { carlos: 'Carlos 2026', valentina: 'Valentina 2026' };
+  return `<div class="lbl">Presupuesto · ${nombre(D.vista)}${roTag()}</div><div style="font-size:20px;font-weight:700;margin:2px 0 12px">${mName(k)}</div>
+  ${vistaSel()}<div class="chips">${ms.map(m => `<button class="chip ${k === m ? 'on' : ''}" data-bmes="${m}">${mName(m, true)}</button>`).join('')}</div>
   <div class="t" style="margin:12px 0"><div class="row"><span class="lbl">Ejecutado</span><b style="color:${col(pt)}">${pt.toFixed(0)}%</b></div><div class="pb"><i style="width:${Math.min(pt, 100)}%;background:${col(pt)}"></i></div><div class="row sub" style="margin-top:6px"><span>${fmt(tr)} gastado</span><span>${fmt(tp)} previsto</span></div><div class="sub" style="margin-top:4px">Disponible: <b style="color:var(--ink)">${fmt(tp - tr)}</b></div></div>
   ${rows.map(x => { const pc = x.p ? x.r / x.p * 100 : null; return `<div style="padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer" data-cat="${esc(x.c)}"><div class="row" style="font-size:13px"><span style="font-weight:500">${esc(x.c)}</span><span>${pc === null ? '<span class="tag">sin previsto</span>' : `<b style="color:${col(pc)}">${pc.toFixed(0)}%</b>`}</span></div><div class="pb" style="height:6px"><i style="width:${pc === null ? 100 : Math.min(pc, 100)}%;background:${pc === null ? 'var(--faint)' : col(pc)}"></i></div><div class="row" style="font-size:11px;color:var(--dim);margin-top:4px"><span>${fmt(x.r)}</span><span>${x.p ? 'de ' + fmt(x.p) : ''}</span></div></div>`; }).join('')}
-  <div class="sub" style="margin-top:12px">Los valores previstos vienen de la columna “Previsto” de la hoja Carlos 2026.</div>`;
+  <div class="sub" style="margin-top:12px">Los valores previstos vienen de la columna “Previsto” de ${D.quienes.length > 1 ? 'las hojas ' + D.quienes.map(w => hojas[w] || nombre(w)).join(' y ') : 'la hoja ' + (hojas[D.quienes[0]] || nombre(D.quienes[0]))}.</div>`;
 }
 
 function vCargar() {
-  const f = S.f, cats = f.tipo === 'G' ? D.catsG : D.catsI, cm = curMes();
-  return `<div class="row"><span class="lbl">Nuevo movimiento</span><div style="display:flex;gap:8px"><button class="iconbtn" data-act="config" title="Configuración">⚙</button><button class="iconbtn" data-act="refresh" title="Actualizar">↻</button></div></div>
+  const f = S.f, own = propio(), cats = f.tipo === 'G' ? own.catsG : own.catsI, cm = curMes();
+  return `<div class="row"><span class="lbl">Nuevo movimiento · ${esc(own.nombre || nombre(ALL.yo))}</span><div style="display:flex;gap:8px"><button class="iconbtn" data-act="config" title="Configuración">⚙</button><button class="iconbtn" data-act="refresh" title="Actualizar">↻</button></div></div>
   <div class="seg" style="margin-top:12px">${[['G', 'Gasto'], ['I', 'Ingreso']].map(([k, l]) => `<button class="${f.tipo === k ? 'on' : ''}" data-tipo="${k}" style="${f.tipo === k ? `color:${k === 'G' ? 'var(--gas)' : 'var(--ing)'}` : ''}">${l}</button>`).join('')}</div>
   <div class="field"><div class="lbl">Monto</div><input class="amount" id="monto" inputmode="numeric" autocomplete="off" placeholder="0" value="${f.monto ? Number(f.monto).toLocaleString('es-CO') : ''}"></div>
   <div class="field"><div class="lbl">Detalle</div><input class="txt" id="desc" autocomplete="off" placeholder="Opcional" value="${esc(f.desc)}"></div>
@@ -356,7 +423,7 @@ async function save() {
   const f = S.f; S.saving = true; upd(); document.getElementById('save').textContent = 'Guardando…';
   try {
     const m = await api('guardarMovimiento', { tipo: f.tipo, valor: +f.monto, desc: f.desc.trim(), cat: f.cat, mes: f.mes });
-    D.movs.push(m);
+    propio().movs.push(m); D = vistaData(S.vista);
     toast(`✓ ${f.tipo === 'G' ? 'Gasto' : 'Ingreso'} de ${fmt(m.valor)} guardado en ${mName(m.mes, true)}`);
     S.f = { tipo: f.tipo, monto: '', desc: '', cat: '', mes: curMes() };
   } catch (e) { toast('No se guardó: ' + e, true); }
@@ -364,7 +431,8 @@ async function save() {
 }
 
 function editSheet(id) {
-  const x = data().find(y => y.id === id); if (!x) return;
+  if (D.ro) return;
+  const x = propio().movs.find(y => y.id === id); if (!x) return;
   const cats = x.tipo === 'G' ? D.catsG : D.catsI, ms = [...new Set([...months(), nextKey(curMes()), x.mes])].sort();
   const ov = document.createElement('div'); ov.className = 'ov';
   ov.innerHTML = `<div class="sheet"><div class="row"><b style="font-size:16px">Editar ${x.tipo === 'G' ? 'gasto' : 'ingreso'}</b><span class="sub">${fdate(x.fecha)}</span></div>
@@ -381,14 +449,14 @@ function editSheet(id) {
   del.onclick = async () => {
     if (!del.dataset.sure) { del.dataset.sure = 1; del.textContent = '¿Seguro? Toca otra vez'; return; }
     busy(true); del.textContent = 'Borrando…';
-    try { await api('borrarMovimiento', id); D.movs = D.movs.filter(y => y.id !== id); ov.remove(); toast('Registro borrado'); render(); }
+    try { await api('borrarMovimiento', id); propio().movs = propio().movs.filter(y => y.id !== id); D = vistaData(S.vista); ov.remove(); toast('Registro borrado'); render(); }
     catch (e) { busy(false); del.textContent = 'Borrar'; delete del.dataset.sure; toast('No se borró: ' + e, true); }
   };
   ov.querySelector('#e_ok').onclick = async () => {
     const c = { valor: +ov.querySelector('#e_v').value.replace(/\D/g, ''), desc: ov.querySelector('#e_d').value, cat: ov.querySelector('#e_c').value, mes: ov.querySelector('#e_m').value };
     if (!(c.valor > 0)) { toast('El monto debe ser mayor que cero', true); return; }
     busy(true); ov.querySelector('#e_ok').textContent = 'Guardando…';
-    try { const m = await api('editarMovimiento', id, c); D.movs = D.movs.map(y => y.id === id ? m : y); ov.remove(); toast('✓ Cambios guardados'); render(); }
+    try { const m = await api('editarMovimiento', id, c); propio().movs = propio().movs.map(y => y.id === id ? m : y); D = vistaData(S.vista); ov.remove(); toast('✓ Cambios guardados'); render(); }
     catch (e) { busy(false); ov.querySelector('#e_ok').textContent = 'Guardar'; toast('No se guardó: ' + e, true); }
   };
 }
@@ -397,7 +465,11 @@ async function cargar(silencioso) {
   if (!DEMO && !getCfg()) return vSetup();
   if (!silencioso) { document.getElementById('nav').innerHTML = ''; document.getElementById('extra').innerHTML = ''; document.getElementById('main').innerHTML = '<div class="empty" style="padding-top:45vh">Cargando…</div>'; }
   try {
-    D = await api('getDatos');
+    const r = await api('getDatos');
+    if (!r.perfiles) { r.yo = r.yo || 'carlos'; r.perfiles = { [r.yo]: { nombre: r.nombre || 'Carlos', movs: r.movs, catsG: r.catsG, catsI: r.catsI, saldo0: r.saldo0, prev: r.prev } }; } // API anterior
+    ALL = r;
+    if (!S.vista || (S.vista !== 'hogar' && !ALL.perfiles[S.vista]) || (S.vista === 'hogar' && disponibles().length < 2)) S.vista = ALL.yo;
+    D = vistaData(S.vista);
     if (!S.period) S.period = curMes();
     if (!S.f.mes) S.f.mes = curMes();
     if (!S.budgetMes) S.budgetMes = curMes();
@@ -412,7 +484,7 @@ async function cargar(silencioso) {
 
 function vSetup(msg) {
   const c = getCfg() || {};
-  D = null;
+  D = null; ALL = null; S.vista = '';
   document.getElementById('nav').innerHTML = '';
   document.getElementById('extra').innerHTML = '';
   document.getElementById('main').innerHTML = `<div class="setup">
@@ -439,13 +511,14 @@ function vSetup(msg) {
 }
 
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-tab],[data-period],[data-act],[data-cat],[data-month],[data-go],[data-mvf],[data-mvc],[data-edit],[data-bmes],[data-tipo],[data-fmes],[data-fcat]');
+  const t = e.target.closest('[data-tab],[data-period],[data-act],[data-cat],[data-month],[data-go],[data-mvf],[data-mvc],[data-edit],[data-bmes],[data-tipo],[data-fmes],[data-fcat],[data-vista]');
   if (!t) return;
   const ds = t.dataset;
   if (ds.act === 'retry') return cargar();
   if (ds.act === 'config') return vSetup();
   if (!D) return;
-  if (ds.tab) { S.tab = ds.tab; S.detail = null; }
+  if (ds.vista) { setVista(ds.vista); }
+  else if (ds.tab) { S.tab = ds.tab; S.detail = null; }
   else if (ds.period) { S.period = ds.period; S.showAll = false; }
   else if (ds.month) { S.period = ds.month; }
   else if (ds.go) { S.tab = ds.go; if (S.period !== 'all') S.budgetMes = S.period; }
